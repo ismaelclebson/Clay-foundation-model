@@ -24,101 +24,50 @@ from box import Box
 from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2
 
-
 class ChesapeakeDataset(Dataset):
-    """
-    Dataset class for the Chesapeake Bay segmentation dataset.
-
-    Args:
-        chip_dir (str): Directory containing the image chips.
-        label_dir (str): Directory containing the labels.
-        metadata (Box): Metadata for normalization and other dataset-specific details.
-        platform (str): Platform identifier used in metadata.
-    """
-
-    def __init__(self, chip_dir, label_dir, metadata, platform):
+    def __init__(self, chip_dir, label_dir, metadata, platform, is_eval=False):
         self.chip_dir = Path(chip_dir)
-        self.label_dir = Path(label_dir)
+        self.label_dir = Path(label_dir) if label_dir else None
         self.metadata = metadata
+        self.is_eval = is_eval
         self.transform = self.create_transforms(
             mean=list(metadata[platform].bands.mean.values()),
             std=list(metadata[platform].bands.std.values()),
         )
 
-        ## Load chip and label file names
-        #self.chips = [chip_path.name for chip_path in self.chip_dir.glob("*.npy")][
-        #    :1000
-        #]
-        #self.labels = [re.sub("_naip-new_", "_lc_", chip) for chip in self.chips]
         self.chips = [chip_path.name for chip_path in self.chip_dir.glob("*.npy")]
-        self.labels = [chip for chip in self.chips]
+        if not is_eval:
+            self.labels = [chip for chip in self.chips]
 
     def create_transforms(self, mean, std):
-        """
-        Create normalization transforms.
-
-        Args:
-            mean (list): Mean values for normalization.
-            std (list): Standard deviation values for normalization.
-
-        Returns:
-            torchvision.transforms.Compose: A composition of transforms.
-        """
-        return v2.Compose(
-            [
-                v2.Normalize(mean=mean, std=std),
-            ],
-        )
+        return v2.Compose([
+            v2.Normalize(mean=mean, std=std),
+        ])
 
     def __len__(self):
         return len(self.chips)
 
     def __getitem__(self, idx):
-        """
-        Get a sample from the dataset.
-
-        Args:
-            idx (int): Index of the sample.
-
-        Returns:
-            dict: A dictionary containing the image, label, and additional information.
-        """
         chip_name = self.chip_dir / self.chips[idx]
-        label_name = self.label_dir / self.labels[idx]
-
         chip = np.load(chip_name).astype(np.float32)
-        label = np.load(label_name).astype(np.int64)
 
-        # Remap labels to match desired classes
-        #label_mapping = {1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 15: 6}
-        label_mapping = {0: 0, 3: 1, 4: 2, 9: 3, 11: 4, 12: 5, 19: 6, 21: 7, 25: 8, 29: 9, 33: 10}  # Vai de 0:0 até 32:32
-        remapped_label = np.vectorize(label_mapping.get)(label)
-        #print(type(remapped_label[0]), remapped_label[0])
         sample = {
             "pixels": self.transform(torch.from_numpy(chip)),
-            "label": torch.from_numpy(remapped_label[0]),
-            "time": torch.zeros(4),  # Placeholder for time information
-            "latlon": torch.zeros(4),  # Placeholder for latlon information
+            "time": torch.zeros(4),
+            "latlon": torch.zeros(4),
         }
+
+        if not self.is_eval:
+            label_name = self.label_dir / self.labels[idx]
+            label = np.load(label_name).astype(np.int64)
+            label_mapping = {0: 0, 3: 1, 4: 2, 9: 3, 11: 4, 12: 5, 19: 6, 21: 7, 25: 8, 29: 9, 33: 10}
+            remapped_label = np.vectorize(label_mapping.get)(label)
+            sample["label"] = torch.from_numpy(remapped_label[0])
+
         return sample
 
-
 class ChesapeakeDataModule(L.LightningDataModule):
-    """
-    DataModule class for the Chesapeake Bay dataset.
-
-    Args:
-        train_chip_dir (str): Directory containing training image chips.
-        train_label_dir (str): Directory containing training labels.
-        val_chip_dir (str): Directory containing validation image chips.
-        val_label_dir (str): Directory containing validation labels.
-        metadata_path (str): Path to the metadata file.
-        batch_size (int): Batch size for data loading.
-        num_workers (int): Number of workers for data loading.
-        platform (str): Platform identifier used in metadata.
-    """
-
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         train_chip_dir,
         train_label_dir,
@@ -128,24 +77,20 @@ class ChesapeakeDataModule(L.LightningDataModule):
         batch_size,
         num_workers,
         platform,
+        eval_chip_dir=None,
     ):
         super().__init__()
         self.train_chip_dir = train_chip_dir
         self.train_label_dir = train_label_dir
         self.val_chip_dir = val_chip_dir
         self.val_label_dir = val_label_dir
+        self.eval_chip_dir = eval_chip_dir
         self.metadata = Box(yaml.safe_load(open(metadata_path)))
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.platform = platform
 
     def setup(self, stage=None):
-        """
-        Setup datasets for training and validation.
-
-        Args:
-            stage (str): Stage identifier ('fit' or 'test').
-        """
         if stage in {"fit", None}:
             self.trn_ds = ChesapeakeDataset(
                 self.train_chip_dir,
@@ -159,14 +104,16 @@ class ChesapeakeDataModule(L.LightningDataModule):
                 self.metadata,
                 self.platform,
             )
+        if stage == "evaluate":
+            self.eval_ds = ChesapeakeDataset(
+                self.eval_chip_dir,
+                None,
+                self.metadata,
+                self.platform,
+                is_eval=True,
+            )
 
     def train_dataloader(self):
-        """
-        Create DataLoader for training data.
-
-        Returns:
-            DataLoader: DataLoader for training dataset.
-        """
         return DataLoader(
             self.trn_ds,
             batch_size=self.batch_size,
@@ -175,14 +122,15 @@ class ChesapeakeDataModule(L.LightningDataModule):
         )
 
     def val_dataloader(self):
-        """
-        Create DataLoader for validation data.
-
-        Returns:
-            DataLoader: DataLoader for validation dataset.
-        """
         return DataLoader(
             self.val_ds,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+        )
+
+    def eval_dataloader(self):
+        return DataLoader(
+            self.eval_ds,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
         )
