@@ -45,7 +45,7 @@ def resize_label_array(label_array, target_shape):
     return resized[np.newaxis, ...]
 
 # Define o diretório raiz dos dados
-data_dir = '../../dataset_goiasmuticlasse4claymodel/data/raw'
+data_dir = '../../dataset_palmls4claymodel/data/raw'
 
 # Lista para armazenar os caminhos dos arquivos .npz
 npz_files = [os.path.join(data_dir, filename) for filename in os.listdir(data_dir) if filename.endswith('.npz')]
@@ -60,7 +60,7 @@ train_files, test_val_files = train_test_split(npz_files, train_size=train_ratio
 val_files, test_files = train_test_split(test_val_files, train_size=val_ratio / (val_ratio + test_ratio), random_state=42)
 
 # Função para processar e salvar imagens e rótulos como .npy
-def process_and_split_npz(filepath, output_dir, split):
+def process_and_split_npz(filepath, output_dir, split, n_band):
     """
     Processa um arquivo .npz e salva as imagens e máscaras no formato .npy nos diretórios img e gt.
     Se necessário, ajusta o formato para o esperado.
@@ -70,6 +70,9 @@ def process_and_split_npz(filepath, output_dir, split):
         output_dir (str): Diretório base para salvar os arquivos processados.
         split (str): Nome do conjunto ('train', 'val' ou 'test').
     """
+    bands_feature = int(n_band-1)
+    band_label = 1
+
     filename = os.path.basename(filepath).split('.')[0]
 
     # Carrega os dados do arquivo .npz
@@ -81,12 +84,12 @@ def process_and_split_npz(filepath, output_dir, split):
     image_array = image_array[:-1, :, :]  # Imagem (C-1, H, W)
 
     # Ajustar o formato da imagem, se necessário
-    if image_array.shape != (10, 256, 256):
-        image_array = resize_image_array(image_array, (10, 256, 256))
+    if image_array.shape != (bands_feature, 256, 256):
+        image_array = resize_image_array(image_array, (bands_feature, 256, 256))
 
     # Ajustar o formato do rótulo, se necessário
-    if class_array.shape != (1, 256, 256):
-        class_array = resize_label_array(class_array, (1, 256, 256))
+    if class_array.shape != (band_label, 256, 256):
+        class_array = resize_label_array(class_array, (band_label, 256, 256))
 
     # Criar diretórios para imagens e rótulos
     img_dir = os.path.join(output_dir, split, "img")
@@ -100,21 +103,21 @@ def process_and_split_npz(filepath, output_dir, split):
 
 
 # Define o diretório de saída
-output_dir = '../../dataset_goiasmuticlasse4claymodel/data'
+output_dir = '../../dataset_palmls4claymodel/data'
 
 # Processa e salva os arquivos de treino
 print("Processando conjunto de treino...")
 for file in train_files:
-    process_and_split_npz(file, output_dir, 'train')
+    process_and_split_npz(file, output_dir, 'train', 7)
 
 # Processa e salva os arquivos de validação
 print("Processando conjunto de validação...")
 for file in val_files:
-    process_and_split_npz(file, output_dir, 'val')
+    process_and_split_npz(file, output_dir, 'val', 7)
 
 # Processa e salva os arquivos de teste
 print("Processando conjunto de teste...")
 for file in test_files:
-    process_and_split_npz(file, output_dir, 'test')
+    process_and_split_npz(file, output_dir, 'test', 7)
 
 print("Preparação do dataset concluída!")

@@ -66,8 +66,10 @@ class ChesapeakeSegmentor(L.LightningModule):
 
         #waves = torch.tensor([0.65, 0.56, 0.48, 0.842])  # NAIP wavelengths
         #gsd = torch.tensor(1.0)  # NAIP GSD
-        waves = torch.tensor([0.493, 0.56, 0.665, 0.704, 0.74, 0.783, 0.842, 0.865, 1.61, 2.19])  # sentinel-2-l2a wavelengths
-        gsd = torch.tensor(10.0)  # sentinel-2-l2a
+        #waves = torch.tensor([0.493, 0.56, 0.665, 0.704, 0.74, 0.783, 0.842, 0.865, 1.61, 2.19])  # sentinel-2-l2a wavelengths
+        #gsd = torch.tensor(10.0)  # sentinel-2-l2a
+        waves = torch.tensor([0.65, 0.56, 0.48, 0.86, 1.6, 2.2])  # landsat-c2l2-sr wavelengths
+        gsd = torch.tensor(30.0)  # landsat-c2l2-sr
 
         # Forward pass through the network
         return self.model(
