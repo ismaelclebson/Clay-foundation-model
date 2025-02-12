@@ -173,6 +173,8 @@ class Segmentor(nn.Module):
         self.pixel_shuffle = nn.PixelShuffle(upscale_factor=r)
         self.conv_out = nn.Conv2d(C_out, num_classes, kernel_size=3, padding=1)
 
+
+
     def forward(self, datacube):
         """
         Forward pass of the Segmentor.

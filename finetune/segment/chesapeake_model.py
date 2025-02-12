@@ -8,9 +8,10 @@ import segmentation_models_pytorch as smp
 import torch
 import torch.nn.functional as F
 from torch import optim
-from torchmetrics.classification import F1Score, MulticlassJaccardIndex
+from torchmetrics.classification import F1Score, MulticlassJaccardIndex, BinaryJaccardIndex
 
 from finetune.segment.factory import Segmentor
+from finetune.segment.joinLoss import JointLoss
 
 
 class ChesapeakeSegmentor(L.LightningModule):
@@ -41,16 +42,23 @@ class ChesapeakeSegmentor(L.LightningModule):
             ckpt_path=ckpt_path,
         )
 
-        self.loss_fn = smp.losses.FocalLoss(mode="multiclass")
-        self.iou = MulticlassJaccardIndex(
-            num_classes=num_classes,
-            average="weighted",
-        )
-        self.f1 = F1Score(
-            task="multiclass",
-            num_classes=num_classes,
-            average="weighted",
-        )
+        #self.loss_fn = smp.losses.FocalLoss(mode="multiclass")
+        self.focal_loss = smp.losses.FocalLoss(mode="binary")
+        self.dice_loss = smp.losses.DiceLoss(mode="binary")
+        self.loss_fn = JointLoss(self.focal_loss, self.dice_loss, weight1=0.5, weight2=0.5)
+
+        #self.iou = MulticlassJaccardIndex(
+        #    num_classes=num_classes,
+        #    average="weighted",
+        #)
+        #self.f1 = F1Score(
+        #    task="multiclass",
+        #    num_classes=num_classes,
+        #    average="weighted",
+        #)
+
+        self.iou = BinaryJaccardIndex()
+        self.f1 = F1Score(task='binary')
 
     def forward(self, datacube):
         """
@@ -129,12 +137,14 @@ class ChesapeakeSegmentor(L.LightningModule):
         """
         labels = batch["label"].long()
         outputs = self(batch)
-        outputs = F.interpolate(
-            outputs,
-            size=(256, 256),#size=(224, 224),
-            mode="bilinear",
-            align_corners=False,
-        )  # Resize to match labels size
+        #print(outputs.shape)
+        if outputs.shape[-2:] != (256, 256):
+            outputs = F.interpolate(
+                outputs,
+                size=(256, 256),#size=(224, 224),
+                mode="bilinear",
+                align_corners=False,
+            )  # Resize to match labels size
 
         loss = self.loss_fn(outputs, labels)
         iou = self.iou(outputs, labels)
